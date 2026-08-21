@@ -1,0 +1,64 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare sources
+        run: |
+          if [ ! -f settings.gradle.kts ]; then
+            ZIP=$(ls *.zip 2>/dev/null | head -n1)
+            if [ -n "$ZIP" ]; then unzip -q -o "$ZIP"; fi
+          fi
+          if [ ! -f settings.gradle.kts ] && [ -f SystemGuard/settings.gradle.kts ]; then
+            tar -C SystemGuard --exclude=.github -cf - . | tar -xf -
+          fi
+          if [ ! -f settings.gradle.kts ]; then
+            echo "::error::project files not found"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/NegahbanSystem-v1.0.apk
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NegahbanSystem-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+      - name: Publish APK as a release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: Negahban System APK
+          files: out/*.apk
